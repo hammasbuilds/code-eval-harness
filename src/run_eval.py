@@ -42,6 +42,22 @@ def main(limit: int = 50, models: list[str] | None = None) -> None:
             marks = "".join("P" if row[s] else "." for s in STRATEGIES)
             print(f"  [{model:20}] {i:3}/{len(problems)} {problem.task_id:18} {marks}")
 
+    # A run where nothing generated is not a run with a low score, it is a run that did not
+    # happen - a stopped Ollama, a model that was never pulled, a name misspelled on the
+    # command line. Continuing past a single dead generation is right; writing a results
+    # file and exiting 0 after losing every one of them is not, because the next thing to
+    # read scores.json cannot tell the difference between "the model is bad" and "the model
+    # was never reached". This exact case produced 492 skipped generations, an empty table
+    # and exit code 0.
+    if not records:
+        raise SystemExit(
+            f"every generation failed for {', '.join(models)} - nothing was scored.\n"
+            "Check that ollama is running and each model name is pulled: ollama list"
+        )
+    expected = len(models) * len(problems)
+    if len(records) < expected:
+        print(f"\n  WARNING: {expected - len(records)} of {expected} generations failed")
+
     RESULTS.joinpath("scores.json").write_text(
         json.dumps({"models": models, "n_problems": len(problems), "records": records}, indent=2),
         encoding="utf-8",
@@ -72,4 +88,10 @@ def main(limit: int = 50, models: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 40
-    main(n)
+    # A second positional: a comma-separated model list. The extraction rules only differ
+    # on malformed output, and the three defaults all emit clean fences - so with them the
+    # `first_fence`, `all_fences` and `smart` columns agree on every record and the
+    # comparison between rules has nothing to compare. Smaller and non-coder models are
+    # where a rule earns its keep.
+    picked = sys.argv[2].split(",") if len(sys.argv) > 2 else None
+    main(n, picked)
