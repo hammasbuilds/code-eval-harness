@@ -15,7 +15,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from core import STRATEGIES, generate, load_problems, run_tests
 
 RESULTS = Path(__file__).resolve().parent.parent / "results"
-MODELS = ["qwen2.5-coder:3b", "qwen2.5:7b-instruct", "qwen2.5-coder:14b"]
+# The two 14B models, because those are what anyone actually deploys. A 3B was in here
+# as a convenience and it made the comparison weaker: a toy model's output is not
+# evidence about how an extraction rule behaves on the output people really parse.
+MODELS = ["qwen2.5-coder:14b", "qwen2.5:14b-instruct"]
 
 
 def main(limit: int = 50, models: list[str] | None = None) -> None:
@@ -89,9 +92,10 @@ def main(limit: int = 50, models: list[str] | None = None) -> None:
 if __name__ == "__main__":
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 40
     # A second positional: a comma-separated model list. The extraction rules only differ
-    # on malformed output, and the three defaults all emit clean fences - so with them the
-    # `first_fence`, `all_fences` and `smart` columns agree on every record and the
-    # comparison between rules has nothing to compare. Smaller and non-coder models are
-    # where a rule earns its keep.
+    # on output that is not a clean fenced block, and the coder model almost always emits
+    # one - so on its records `first_fence`, `all_fences` and `smart` agree everywhere and
+    # the comparison between rules has nothing to compare. The instruct model of the same
+    # size is the useful contrast: it explains itself, and that prose is what a rule has
+    # to survive.
     picked = sys.argv[2].split(",") if len(sys.argv) > 2 else None
     main(n, picked)
