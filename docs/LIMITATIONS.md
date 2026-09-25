@@ -18,7 +18,7 @@ pass@k, which is what published numbers usually report and which requires sampli
 ## Two models, one family
 
 `qwen2.5-coder:3b` and `qwen2.5:7b-instruct` are both Qwen2.5. The finding that they are
-indistinguishable is a statement about these two models on these 50 problems - not a claim
+indistinguishable is a statement about these two models on all 164 problems - not a claim
 about model scaling in general.
 
 ## The extraction spread is partly obvious

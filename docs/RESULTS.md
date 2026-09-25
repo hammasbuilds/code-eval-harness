@@ -2,16 +2,15 @@
 
 [<- back to README](../README.md)
 
-HumanEval problems 0-49, greedy decoding (temperature 0, fixed seed), one generation per
+All 164 HumanEval problems, greedy decoding (temperature 0, fixed seed), one generation per
 (model, problem), cached on disk.
 
 ## pass@1 by model and extraction strategy
 
 | Model | `raw` | `prompt+body` | `first_fence` | `all_fences` | `smart` |
 |---|---:|---:|---:|---:|---:|
-| qwen2.5-coder:3b | **0.0%** | **0.0%** | 94.0% | 94.0% | 94.0% |
-| qwen2.5:7b-instruct | **0.0%** | **0.0%** | 94.0% | 94.0% | 94.0% |
-| qwen2.5-coder:14b | **0.0%** | **0.0%** | 94.0% | 94.0% | 94.0% |
+| qwen2.5-coder:14b | **0.0%** | **0.0%** | 85.4% | 85.4% | 85.4% |
+| qwen2.5:14b-instruct | **0.0%** | **0.0%** | 77.3% | 77.3% | 77.3% |
 
 **Spread: 94 percentage points**, with the generations held identical.
 
@@ -58,14 +57,21 @@ not a harness result.**
 
 ## Model comparison
 
-Under `smart`, the three models disagree on **4 of 50 problems**: `HumanEval/10`,
-`HumanEval/19`, `HumanEval/26` and `HumanEval/38`.
+Two models of the same size and family, differing only in tuning, over all 164 problems:
 
-Only `HumanEval/32` is failed by all three. Every other failure is model-specific, which
-is why the identical 94.0% is an average over different behaviour rather than evidence
-that the models are the same.
+```
+qwen2.5-coder:14b     85.4%
+qwen2.5:14b-instruct  77.3%
+```
 
-**2.3x the parameters produced no measurable difference** on this subset.
+**8.1 points for code tuning at 14B.** That is consistent with the +10.0 points the same
+pair shows on MBPP in
+[code-llm-lab](https://github.com/hammasbuilds/code-llm-lab/tree/main/projects/16_coder_vs_generalist).
+
+An earlier version of this page compared a 3B, a 7B and a 14B over the first 50 problems
+and reported all three at 94.0%, concluding that 2.3x the parameters bought nothing
+measurable. That is withdrawn. Fifty problems was too small a denominator to separate them,
+and three models spanning two families and three sizes is not a controlled comparison.
 
 ## Raw data
 

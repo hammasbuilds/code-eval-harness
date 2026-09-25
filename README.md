@@ -35,39 +35,65 @@ strategies. Any spread is the harness's fault, because the model output never ch
 
 ## The result
 
-HumanEval problems 0-49, greedy decoding, one generation per (model, problem):
+All 164 HumanEval problems, greedy decoding, one generation per (model, problem):
 
 | Model | `raw` | `prompt+body` | `first_fence` | `all_fences` | `smart` |
 |---|---:|---:|---:|---:|---:|
-| qwen2.5-coder:3b | **0.0%** | **0.0%** | 94.0% | 94.0% | 94.0% |
-| qwen2.5:7b-instruct | **0.0%** | **0.0%** | 94.0% | 94.0% | 94.0% |
+| qwen2.5-coder:14b | **0.0%** | **0.0%** | 85.4% | 85.4% | 85.4% |
+| qwen2.5:14b-instruct | **0.0%** | **0.0%** | 77.3% | 77.3% | 77.3% |
 
-**94 points of spread, from extraction alone.**
+**85 points of spread, from extraction alone.** The generations never changed.
 
 ### It is one finding with two faces, not five results
 
 Being precise, because the table overstates the number of independent findings: **both 0%
-strategies fail for the identical reason.** 100 out of 100 failures in each are
-`SyntaxError`, and the cause is the same - the models wrap answers in fences, and backticks
-are not Python.
+strategies fail for the identical reason.** Every failure is a `SyntaxError`, and the cause
+is the same - the models wrap answers in fences, and backticks are not Python.
 
 The substantive half is that **`prompt+body` is the original HumanEval protocol**, designed
 for *completion* models. A chat-tuned model restates the whole function inside a fence, so
 the concatenation is a syntax error. **A harness built for completion models silently
 reports chat models as incapable.**
 
+### The three fence rules never disagree, and that was worth testing
+
+`first_fence`, `all_fences` and `smart` score identically on **every one of 327 records,
+across both models**. `smart` is the elaborate one - it strips prose, picks the block that
+defines a function, handles an unterminated fence - and it buys nothing over taking the
+first fenced block.
+
+This was run specifically to make them disagree, and the prediction failed. The earlier
+version of this page used three models including a 3B, and the rules agreed everywhere; the
+obvious explanation was that a code-tuned model emits unusually clean fences. So the models
+were changed to a matched pair - `qwen2.5-coder:14b` and `qwen2.5:14b-instruct`, same size,
+same family, one of them tuned to explain itself rather than to emit code.
+
+The instruct model still fences cleanly. **It scores 8 points lower overall, and its
+extraction behaviour is identical.** So the sophisticated rule is not earning its place on
+any model tested here, and the honest summary of the five strategies is two groups: *parse
+the fence*, or *do not*. Everything inside the first group is the same rule.
+
 &#128202; **[Full results, per-strategy failure reasons, and the model comparison &rarr;](docs/RESULTS.md)**
 
 ---
 
-## The 3B, the 7B and the 14B are indistinguishable here
+## The coder model is 8 points ahead of its instruct sibling
 
-Under `smart`, all three score **94.0%**. They disagree on **4 of 50 problems**
-(`HumanEval/10`, `/19`, `/26`, `/38`), so the identical score is not the same behaviour —
-it is three different behaviours averaging to the same number.
+Under any fence rule, on all 164 problems:
 
-Worth knowing before paying for a bigger model on this class of task: **4.8x the parameters
-bought nothing measurable.**
+```
+qwen2.5-coder:14b     85.4%
+qwen2.5:14b-instruct  77.3%
+```
+
+Same size, same family, same quantisation, same prompt - only the tuning differs. **8.1
+points for code tuning at 14B**, which is consistent with the +10.0 that
+[code-llm-lab](https://github.com/hammasbuilds/code-llm-lab) measures on MBPP for the same
+pair.
+
+The earlier version of this page compared a 3B, a 7B and a 14B and found them
+indistinguishable at 94.0% on the first 50 problems. That comparison is withdrawn: 50
+problems was too few, and the models were not a matched pair.
 
 ---
 
