@@ -33,7 +33,7 @@ strategies. Any spread is the harness's fault, because the model output never ch
 
 ---
 
-## The result
+## Results
 
 All 164 HumanEval problems, greedy decoding, one generation per (model, problem):
 
@@ -44,7 +44,7 @@ All 164 HumanEval problems, greedy decoding, one generation per (model, problem)
 
 **85 points of spread, from extraction alone.** The generations never changed.
 
-### It is one finding with two faces, not five results
+### One result with two faces, not five
 
 Being precise, because the table overstates the number of independent findings: **both 0%
 strategies fail for the identical reason.** Every failure is a `SyntaxError`, and the cause
