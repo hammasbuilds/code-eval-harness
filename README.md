@@ -1,203 +1,130 @@
-<h1 align="center">code-eval-harness (Python · pandas · PyArrow · Hugging Face Hub)</h1>
-<p align="center"><i>The same answers, five different scores</i></p>
+# code-eval-harness
 
-<p align="center">
-  <a href="docs/RESULTS.md">Results</a> &middot;
-  <a href="docs/METHOD.md">Method</a> &middot;
-  <a href="docs/PROBLEMS.md">Problems hit</a> &middot;
-  <a href="docs/LIMITATIONS.md">Limitations</a> &middot;
-  <a href="docs/FUTURE.md">Future work</a> &middot;
-  <a href="#run-it">Run it</a>
-</p>
+[![ci](https://github.com/hammasbuilds/code-eval-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/hammasbuilds/code-eval-harness/actions/workflows/ci.yml)
+[![license](https://img.shields.io/github/license/hammasbuilds/code-eval-harness)](LICENSE)
+![python](https://img.shields.io/badge/python-3.11%2B-blue)
 
-<p align="center">
-  <a href="https://github.com/hammasbuilds/code-eval-harness/actions/workflows/ci.yml"><img src="https://github.com/hammasbuilds/code-eval-harness/actions/workflows/ci.yml/badge.svg" alt="ci"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/hammasbuilds/code-eval-harness" alt="license"></a>
-  <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="python">
-  <img src="https://img.shields.io/badge/tests-19%20passing-brightgreen" alt="tests">
-  <img src="https://img.shields.io/badge/inference-local%20(Ollama)-success" alt="local">
-  <img src="https://img.shields.io/badge/API%20keys-none-informational" alt="no api keys">
-  <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/badge/lint-ruff-261230" alt="ruff"></a>
-</p>
+We built a HumanEval harness that generates each solution **once**, caches it, and then
+scores the identical generations under five ways of pulling the code out of the model's
+reply. It is for anyone who reads or publishes code-benchmark numbers and wants to know how
+much of a score is the model and how much is the extraction step around it. The answer on
+HumanEval: **the same generations score 0% or 85.4%, depending only on extraction.**
 
----
+## What it does
 
-> ### Identical generations score 0% or 94% on HumanEval, depending only on how the code is pulled out of the model's output.
-
-A code benchmark is reported as **one number**. But between the model's output and that
-number sits an **extraction step** - recovering code from whatever prose and markdown the
-model wrapped it in - and that step is a free parameter almost nobody reports.
-
-Here each solution is generated **once**, cached, then scored under five extraction
-strategies. Any spread is the harness's fault, because the model output never changed.
-
----
-
-## Results
-
-All 164 HumanEval problems, greedy decoding, one generation per (model, problem):
-
-| Model | `raw` | `prompt+body` | `first_fence` | `all_fences` | `smart` |
-|---|---:|---:|---:|---:|---:|
-| qwen2.5-coder:14b | **0.0%** | **0.0%** | 85.4% | 85.4% | 85.4% |
-| qwen2.5:14b-instruct | **0.0%** | **0.0%** | 77.3% | 77.3% | 77.3% |
-
-**85 points of spread, from extraction alone.** The generations never changed.
-
-### One result with two faces, not five
-
-Being precise, because the table overstates the number of independent findings: **both 0%
-strategies fail for the identical reason.** Every failure is a `SyntaxError`, and the cause
-is the same - the models wrap answers in fences, and backticks are not Python.
-
-The substantive half is that **`prompt+body` is the original HumanEval protocol**, designed
-for *completion* models. A chat-tuned model restates the whole function inside a fence, so
-the concatenation is a syntax error. **A harness built for completion models silently
-reports chat models as incapable.**
-
-### The three fence rules never disagree, and that was worth testing
-
-`first_fence`, `all_fences` and `smart` score identically on **every one of 327 records,
-across both models**. `smart` is the elaborate one - it strips prose, picks the block that
-defines a function, handles an unterminated fence - and it buys nothing over taking the
-first fenced block.
-
-This was run specifically to make them disagree, and the prediction failed. The earlier
-version of this page used three models including a 3B, and the rules agreed everywhere; the
-obvious explanation was that a code-tuned model emits unusually clean fences. So the models
-were changed to a matched pair - `qwen2.5-coder:14b` and `qwen2.5:14b-instruct`, same size,
-same family, one of them tuned to explain itself rather than to emit code.
-
-The instruct model still fences cleanly. **It scores 8 points lower overall, and its
-extraction behaviour is identical.** So the sophisticated rule is not earning its place on
-any model tested here, and the honest summary of the five strategies is two groups: *parse
-the fence*, or *do not*. Everything inside the first group is the same rule.
-
-&#128202; **[Full results, per-strategy failure reasons, and the model comparison &rarr;](docs/RESULTS.md)**
-
----
-
-## The coder model is 8 points ahead of its instruct sibling
-
-Under any fence rule, on all 164 problems:
-
-```
-qwen2.5-coder:14b     85.4%
-qwen2.5:14b-instruct  77.3%
-```
-
-Same size, same family, same quantisation, same prompt - only the tuning differs. **8.1
-points for code tuning at 14B**, which is consistent with the +10.0 that
-[code-llm-lab](https://github.com/hammasbuilds/code-llm-lab) measures on MBPP for the same
-pair.
-
-The earlier version of this page compared a 3B, a 7B and a 14B and found them
-indistinguishable at 94.0% on the first 50 problems. That comparison is withdrawn: 50
-problems was too few, and the models were not a matched pair.
-
----
-
-## How it works
+- Generates one greedy solution per (model, HumanEval problem) through a local Ollama model
+  and caches it on disk, so re-scoring never calls the model again.
+- Scores every cached generation under five extraction strategies: `raw`, `prompt+body`
+  (the original HumanEval completion protocol), `first_fence`, `all_fences` and `smart`.
+- Runs each candidate against HumanEval's own `check()` in a subprocess with a timeout, and
+  records the failure reason (`SyntaxError`, assertion, timeout) next to the verdict.
+- Writes every record to `results/scores.json` and prints pass@1 per strategy and the
+  spread between the best and worst strategy for each model.
 
 ```mermaid
 flowchart LR
-    A["HumanEval<br/>0.1 MB"] --> B["generate once<br/>temperature 0, fixed seed"]
+    A["HumanEval<br/>164 problems"] --> B["generate once<br/>temperature 0, fixed seed"]
     B --> C["cache on disk<br/>keyed by model + task"]
     C --> D["five extraction strategies"]
     D --> E["execute in a subprocess<br/>with a timeout"]
     E --> F["pass@1 per strategy"]
-
-    style C fill:#16a34a,color:#fff
-    style F fill:#2563eb,color:#fff
 ```
 
-**Generation and scoring are separate on purpose.** Adding a sixth strategy and re-scoring
-costs **no model time at all**.
+## Sample input / output
 
-&#128269; **[The five strategies and what each one assumes &rarr;](docs/METHOD.md)**
+One cached generation from `qwen2.5:14b-instruct` for `HumanEval/2`, scored under all five
+strategies (real output, no model call):
 
----
+````text
+model output (qwen2.5:14b-instruct, HumanEval/2), verbatim:
+Here is the completed Python function:
+
+```python
+def truncate_number(number: float) -> float:
+    """ Given a positive floating point number, it can be decomposed into
+    ...
+    integer_part = int(number)
+    decimal_part = number - integer_part
+    return decimal_part
+```
+
+This function works by first finding the integer part of the number using the `int()`
+function, which truncates the decimal part. ...
+
+strategy     verdict
+raw          FAIL  SyntaxError: invalid syntax
+prompt+body  FAIL  SyntaxError: invalid syntax
+first_fence  PASS
+all_fences   PASS
+smart        PASS
+````
+
+The function is correct. The two failing strategies fail because backticks and prose are
+not Python.
+
+## Results
+
+All 164 HumanEval problems, greedy decoding, one generation per (model, problem), from
+[`results/scores.json`](results/scores.json):
+
+| Model | `raw` | `prompt+body` | `first_fence` | `all_fences` | `smart` |
+|---|---:|---:|---:|---:|---:|
+| qwen2.5-coder:14b | 0.0% | 0.0% | 85.4% | 85.4% | 85.4% |
+| qwen2.5:14b-instruct | 0.0% | 0.0% | 77.3% | 77.3% | 77.3% |
+
+- **85 points of spread from extraction alone.** The generations never changed.
+- **Both 0% strategies fail for the same reason**: every failure is a `SyntaxError`, because
+  chat models wrap answers in fences. `prompt+body` is the original HumanEval protocol,
+  designed for completion models, so a harness built for completion models reports chat
+  models as incapable.
+- **The three fence rules agree on every one of the 327 records.** The elaborate `smart`
+  rule buys nothing over taking the first fenced block, on either model.
+- **Code tuning is worth 8.1 points at 14B** (85.4% vs 77.3%, same size, family and
+  prompt), consistent with the +10.0 that
+  [code-llm-lab](https://github.com/hammasbuilds/code-llm-lab) measures on MBPP for the
+  same pair. The instruct run has 163 records: one generation failed and is not scored.
+
+More: [full results and per-strategy failure reasons](docs/RESULTS.md) ·
+[the five strategies and what each assumes](docs/METHOD.md).
+
+## Tech stack
+
+- Python 3.11+
+- pandas + PyArrow (reading the HumanEval parquet)
+- Ollama over HTTP (`urllib`) for local generation: `qwen2.5-coder:14b`, `qwen2.5:14b-instruct`
+- `subprocess` with a timeout for execution
+- huggingface_hub (optional, to fetch HumanEval once)
+- pytest, ruff, GitHub Actions
 
 ## Run it
 
 ```bash
-python src/run_eval.py 50     # generate (cached) and score
-pytest -q                     # 19 tests, no network, no model calls
+git clone https://github.com/hammasbuilds/code-eval-harness
+cd code-eval-harness
+uv sync --all-groups
+
+# HumanEval is read from the local Hugging Face cache; fetch it once:
+uv run --with huggingface_hub python -c "from huggingface_hub import hf_hub_download as d; d('openai/openai_humaneval','openai_humaneval/test-00000-of-00001.parquet',repo_type='dataset')"
+
+uv run python src/run_eval.py 164     # score all 164 (needs Ollama for any generation not cached)
+uv run pytest -q                      # 19 tests, no network, no model calls
 ```
 
----
+The cached generations for both models are committed in `generations/`, so re-scoring the
+results above needs no model. Generating new ones needs Ollama running locally with the
+models pulled.
 
-## Input
-
-![input](docs/images/input.png)
-
-## Output
-
-![output](docs/images/output.png)
-
-*Nothing about the model changed between the first row and the third. The generations are
-cached on disk and every strategy reads the same files. A HumanEval number published without
-its extraction strategy is not a measurement of the model.*
-
-*The third column is the stronger half. `qwen2.5-coder:14b` has **4.8x the parameters** of
-the 3B and scores **identically** under all five strategies — while failing a different set
-of problems. Extraction moves the score 94 points; model size moves it zero.*
-
-### &#9888; Safety
-
-`run_tests` executes code written by a language model. It runs in a separate process, in a
-throwaway temp directory, with a timeout - **but it is not a security sandbox.** Do not
-point it at untrusted generations on a machine you care about.
-
----
-
-## The harness shipped with this exact bug
-
-The runner interpolated `repr(entry_point)`, so HumanEval's `check()` received the **string**
-`"add"` instead of the function. Every test failed with `'str' object is not callable` -
-**the harness reported 0% for models that were answering correctly.**
-
-That is precisely the failure this repo exists to measure, and it happened here first.
-
-&#128736; **[Every problem hit while building this &rarr;](docs/PROBLEMS.md)**
-
----
-
-## Also worth reading
-
-| | |
-|---|---|
-| &#128202; **[Results](docs/RESULTS.md)** | Full tables, failure reasons, model comparison |
-| &#128269; **[Method](docs/METHOD.md)** | The five strategies, caching, execution |
-| &#128736; **[Problems hit](docs/PROBLEMS.md)** | The entry-point bug, plotly, buffered logs |
-| &#9888; **[Limitations](docs/LIMITATIONS.md)** | Why 94% is not comparable to published pass@1 |
-| &#128640; **[Future work](docs/FUTURE.md)** | Full 164, pass@k, MBPP, a real sandbox |
-
----
-
-## Layout
+`run_tests` executes code written by a language model in a separate process, in a throwaway
+temp directory, with a timeout. It is not a security sandbox: do not point it at untrusted
+generations on a machine you care about.
 
 ```
 src/core.py       data loading, generation + cache, five strategies, execution
 src/run_eval.py   generate once, score every way, write results/scores.json
-tests/            19 tests using hand-written "model output" - no ollama needed
-docs/             detailed documentation
+tests/            tests using hand-written "model output", no Ollama needed
+generations/      cached model outputs, one JSON file per (model, problem)
 ```
-
-## Stack
-
-`Python 3.11+` &middot; `Ollama` (local inference) &middot; `pandas` &middot; `pyarrow`
-&middot; `pytest` &middot; `ruff` &middot;
-`GitHub Actions` &middot; HumanEval via `Hugging Face Hub`
-
-## Keywords
-
-HumanEval &middot; pass@k &middot; pass@1 &middot; code generation benchmark &middot;
-LLM evaluation &middot; evaluation harness &middot; answer extraction &middot;
-benchmark reproducibility &middot; local LLM &middot; Ollama &middot; Qwen2.5 &middot;
-code LLM &middot; prompt sensitivity &middot; harness bias &middot;
-LLM benchmarking methodology &middot; deterministic evaluation
 
 ## Licence
 
-MIT - see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE). HumanEval is by OpenAI (MIT licence).
